@@ -7,7 +7,7 @@
 *.userosscache
 *.sln.docstates
 *.key
-cognitive_service.key 
+cognitive_service.key
 FaceTag_TemporaryKey.pfx
 
 # User-specific files (MonoDevelop/Xamarin Studio)
