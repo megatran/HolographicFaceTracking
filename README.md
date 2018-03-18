@@ -1,4 +1,6 @@
-"# HolographicFaceTracking"
+# HolographicFaceTracking
+
+<img src="http://www.trannhan.com/wp-content/uploads/2018/03/IMG_5659-1080x924.jpg"> </img>
 
 In March 2018, I am learning the app development of the Microsoft HoloLens. I think the best way to learn a particular technology is to build something with it!
 This app can capture what the user sees and then detect faces in the frame of the HoloLens' camera.
