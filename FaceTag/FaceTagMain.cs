@@ -6,8 +6,6 @@
 //     * Remove the unused code from this file.
 //     * Delete the Content folder provided with this template.
 //
-#define DRAW_SAMPLE_CONTENT
-
 using System;
 using System.Diagnostics;
 using Windows.Graphics.Holographic;
@@ -18,10 +16,10 @@ using FaceTag.Common;
 using System.Threading.Tasks;
 using Windows.Foundation;
 using System.Collections.Generic;
-
-#if DRAW_SAMPLE_CONTENT
+using Windows.Media.Capture.Frames;
+using Windows.Media.Devices.Core;
+using System.Numerics;
 using FaceTag.Content;
-#endif
 
 namespace FaceTag
 {
@@ -30,15 +28,6 @@ namespace FaceTag
     /// </summary>
     internal class FaceTagMain : IDisposable
     {
-
-#if DRAW_SAMPLE_CONTENT
-        // Renders a colorful holographic cube that's 20 centimeters wide. This sample content
-        // is used to demonstrate world-locked rendering.
-        private SpinningCubeRenderer        spinningCubeRenderer;
-        
-        private SpatialInputHandler         spatialInputHandler;
-#endif
-
         // Cached reference to device resources.
         private DeviceResources             deviceResources;
 
@@ -53,6 +42,17 @@ namespace FaceTag
 
         // A reference frame attached to the holographic camera.
         SpatialStationaryFrameOfReference   referenceFrame;
+
+        FrameGrabber frameGrabber;
+
+        FrameAnalyzer frameAnalyzer;
+
+        TextRenderer textRenderer;
+
+        QuadRenderer quadRenderer;
+
+        const long faceTimeThreshold = 10000; 
+        long lastFaceDetectedTimestamp = 0; 
         
         /// <summary>
         /// Loads and initializes application assets when the application is loaded.
@@ -71,18 +71,6 @@ namespace FaceTag
         {
             this.holographicSpace = holographicSpace;
 
-            // 
-            // TODO: Add code here to initialize your content.
-            // 
-
-#if DRAW_SAMPLE_CONTENT
-            // Initialize the sample hologram.
-            spinningCubeRenderer = new SpinningCubeRenderer(deviceResources);
-
-            spatialInputHandler = new SpatialInputHandler();
-#endif
-
-            // Use the default SpatialLocator to track the motion of the device.
             locator = SpatialLocator.GetDefault();
 
             // Be able to respond to changes in the positional tracking state.
@@ -120,17 +108,34 @@ namespace FaceTag
             //   indicates to be of special interest. Anchor positions do not drift, but can be corrected; the
             //   anchor will use the corrected position starting in the next frame after the correction has
             //   occurred.
+
+            InitFrameGrabberAndAnalyzer();
+
+            textRenderer = new TextRenderer(deviceResources, 512, 512);
+            textRenderer.RenderTextOffscreen("No faces detected");
+
+            quadRenderer = new QuadRenderer(deviceResources);
+        }
+
+        async void InitFrameGrabberAndAnalyzer()
+        {
+            frameGrabber = await FrameGrabber.CreateAsync();
+            frameAnalyzer = await FrameAnalyzer.CreateAsync(); 
         }
 
         public void Dispose()
         {
-#if DRAW_SAMPLE_CONTENT
-            if (spinningCubeRenderer != null)
+            if(textRenderer != null)
             {
-                spinningCubeRenderer.Dispose();
-                spinningCubeRenderer = null;
+                textRenderer.Dispose();
+                textRenderer = null; 
             }
-#endif
+
+            if(quadRenderer != null)
+            {
+                quadRenderer.Dispose();
+                quadRenderer = null; 
+            }
         }
 
         /// <summary>
@@ -160,39 +165,39 @@ namespace FaceTag
             // for creating the stereo view matrices when rendering the sample content.
             SpatialCoordinateSystem currentCoordinateSystem = referenceFrame.CoordinateSystem;
 
-#if DRAW_SAMPLE_CONTENT
-            // Check for new input state since the last frame.
-            SpatialInteractionSourceState pointerState = spatialInputHandler.CheckForInput();
-            if (null != pointerState)
+            SpatialPointerPose pose = SpatialPointerPose.TryGetAtTimestamp(currentCoordinateSystem, prediction.Timestamp);            
+
+            ProcessFrame(currentCoordinateSystem);
+
+             if (Utils.GetCurrentUnixTimestampMillis() - lastFaceDetectedTimestamp > faceTimeThreshold)
             {
-                // When a Pressed gesture is detected, the sample hologram will be repositioned
-                // two meters in front of the user.
-                spinningCubeRenderer.PositionHologram(
-                    pointerState.TryGetPointerPose(currentCoordinateSystem)
-                    );
+                if(pose != null)
+                {
+                    var headPosition = pose.Head.Position;
+                    var headForward = pose.Head.ForwardDirection;
+                    quadRenderer.TargetPosition = headPosition + (2.0f * headForward);
+                }
+                                
+                textRenderer.RenderTextOffscreen("No faces detected");
             }
-#endif
 
             timer.Tick(() => 
             {
-                //
-                // TODO: Update scene objects.
-                //
-                // Put time-based updates here. By default this code will run once per frame,
-                // but if you change the StepTimer to use a fixed time step this code will
-                // run as many times as needed to get to the current step.
-                //
+            //
+            // TODO: Update scene objects.
+            //
+            // Put time-based updates here. By default this code will run once per frame,
+            // but if you change the StepTimer to use a fixed time step this code will
+            // run as many times as needed to get to the current step.
+            //                
 
-#if DRAW_SAMPLE_CONTENT
-                spinningCubeRenderer.Update(timer);
-#endif
+                quadRenderer.Update(pose, timer);
             });
 
             // We complete the frame update by using information about our content positioning
             // to set the focus point.
             foreach (var cameraPose in prediction.CameraPoses)
             {
-#if DRAW_SAMPLE_CONTENT
                 // The HolographicCameraRenderingParameters class provides access to set
                 // the image stabilization parameters.
                 HolographicCameraRenderingParameters renderingParameters = holographicFrame.GetRenderingParameters(cameraPose);
@@ -205,16 +210,125 @@ namespace FaceTag
                 // since that is the only hologram available for the user to focus on.
                 // You can also set the relative velocity and facing of that content; the sample
                 // hologram is at a fixed point so we only need to indicate its position.
-                renderingParameters.SetFocusPoint(
-                    currentCoordinateSystem,
-                    spinningCubeRenderer.Position
+
+                if(Utils.GetCurrentUnixTimestampMillis() - lastFaceDetectedTimestamp <= faceTimeThreshold)
+                {
+                    renderingParameters.SetFocusPoint(
+                        currentCoordinateSystem,    
+                        quadRenderer.Position,
+                        quadRenderer.Forward,
+                        quadRenderer.Velocity
                     );
-#endif
+                }
             }
 
             // The holographic frame will be used to get up-to-date view and projection matrices and
             // to present the swap chain.
             return holographicFrame;
+        }
+
+        bool IsInValidateStateToProcessFrame()
+        {
+            return 
+                frameGrabber != null && // frameCapture has been initilised 
+                frameGrabber.ElapsedTimeSinceLastFrameCaptured > 0 && // frameCapture has a frame 
+                frameAnalyzer != null && // frameAnalyzer has been initilised 
+                frameAnalyzer.IsReady; // frameAnalyzer has finished processing the last frame                 
+        }
+
+        void ProcessFrame(SpatialCoordinateSystem worldCoordinateSystem)
+        {
+            if (!IsInValidateStateToProcessFrame())
+            {
+                return;
+            }
+
+            // obtain the details of the last frame captured 
+            FrameGrabber.Frame frame = frameGrabber.LastFrame;
+
+            if (frame.mediaFrameReference == null)
+            {
+                return;
+            }
+
+            MediaFrameReference mediaFrameReference = frame.mediaFrameReference;
+
+            SpatialCoordinateSystem cameraCoordinateSystem = mediaFrameReference.CoordinateSystem;
+            CameraIntrinsics cameraIntrinsics = mediaFrameReference.VideoMediaFrame.CameraIntrinsics;
+
+            Matrix4x4? cameraToWorld = cameraCoordinateSystem.TryGetTransformTo(worldCoordinateSystem);
+
+            if (!cameraToWorld.HasValue)
+            {
+                return;
+            }
+
+            // padding 
+            float averageFaceWidthInMeters = 0.15f;
+
+            float pixelsPerMeterAlongX = cameraIntrinsics.FocalLength.X;
+            float averagePixelsForFaceAt1Meter = pixelsPerMeterAlongX * averageFaceWidthInMeters;
+
+            // Place the label 25cm above the center of the face.
+            Vector3 labelOffsetInWorldSpace = new Vector3(0.0f, 0.25f, 0.0f);            
+
+            frameAnalyzer.AnalyzeFrame(frame.mediaFrameReference, (status, detectedPersons) =>
+            {
+                if(status > 0 && detectedPersons.Count > 0)
+                {
+                    FrameAnalyzer.Bounds? bestRect = null;
+                    Vector3 bestRectPositionInCameraSpace = Vector3.Zero;
+                    float bestDotProduct = -1.0f;
+                    FrameAnalyzer.DetectedPerson bestPerson = null; 
+
+                    foreach (var dp in detectedPersons)
+                    {
+                        Debug.WriteLine($"Detected person: {dp.ToString()}");
+
+                        Point faceRectCenterPoint = new Point(
+                            dp.bounds.left + dp.bounds.width /2, 
+                            dp.bounds.top + dp.bounds.height / 2
+                            );
+
+                        // Calculate the vector towards the face at 1 meter.
+                        Vector2 centerOfFace = cameraIntrinsics.UnprojectAtUnitDepth(faceRectCenterPoint);
+
+                        // Add the Z component and normalize.
+                        Vector3 vectorTowardsFace = Vector3.Normalize(new Vector3(centerOfFace.X, centerOfFace.Y, -1.0f));
+
+                        // Get the dot product between the vector towards the face and the gaze vector.
+                        // The closer the dot product is to 1.0, the closer the face is to the middle of the video image.
+                        float dotFaceWithGaze = Vector3.Dot(vectorTowardsFace, -Vector3.UnitZ);                        
+
+                        // Pick the faceRect that best matches the users gaze.
+                        if (dotFaceWithGaze > bestDotProduct)
+                        {
+                            // Estimate depth using the ratio of the current faceRect width with the average faceRect width at 1 meter.
+                            float estimatedFaceDepth = averagePixelsForFaceAt1Meter / (float)dp.bounds.width;
+
+                            // Scale the vector towards the face by the depth, and add an offset for the label.
+                            Vector3 targetPositionInCameraSpace = vectorTowardsFace * estimatedFaceDepth;
+
+                            bestDotProduct = dotFaceWithGaze;
+                            bestRect = dp.bounds;
+                            bestRectPositionInCameraSpace = targetPositionInCameraSpace;
+                            bestPerson = dp; 
+                        }                         
+                    }
+
+                    if (bestRect.HasValue)
+                    {
+                        // Transform the cube from Camera space to World space.
+                        Vector3 bestRectPositionInWorldspace = Vector3.Transform(bestRectPositionInCameraSpace, cameraToWorld.Value);
+                        Vector3 labelPosition = bestRectPositionInWorldspace + labelOffsetInWorldSpace;                          
+
+                        quadRenderer.TargetPosition = labelPosition;
+                        textRenderer.RenderTextOffscreen($"{bestPerson.name}, {bestPerson.gender}, Age: {bestPerson.age}");
+
+                        lastFaceDetectedTimestamp = Utils.GetCurrentUnixTimestampMillis();
+                    }               
+                }
+            }); 
         }
 
         /// <summary>
@@ -229,14 +343,6 @@ namespace FaceTag
             {
                 return false;
             }
-
-            //
-            // TODO: Add code for pre-pass rendering here.
-            //
-            // Take care of any tasks that are not specific to an individual holographic
-            // camera. This includes anything that doesn't need the final view or projection
-            // matrix, such as lighting maps.
-            //
 
             // Up-to-date frame predictions enhance the effectiveness of image stablization and
             // allow more accurate positioning of holograms.
@@ -272,24 +378,6 @@ namespace FaceTag
                         1.0f,
                         0);
 
-                    //
-                    // TODO: Replace the sample content with your own content.
-                    //
-                    // Notes regarding holographic content:
-                    //    * For drawing, remember that you have the potential to fill twice as many pixels
-                    //      in a stereoscopic render target as compared to a non-stereoscopic render target
-                    //      of the same resolution. Avoid unnecessary or repeated writes to the same pixel,
-                    //      and only draw holograms that the user can see.
-                    //    * To help occlude hologram geometry, you can create a depth map using geometry
-                    //      data obtained via the surface mapping APIs. You can use this depth map to avoid
-                    //      rendering holograms that are intended to be hidden behind tables, walls,
-                    //      monitors, and so on.
-                    //    * Black pixels will appear transparent to the user wearing the device, but you
-                    //      should still use alpha blending to draw semitransparent holograms. You should
-                    //      also clear the screen to Transparent as shown above.
-                    //
-
-
                     // The view and projection matrices for each holographic camera will change
                     // every frame. This function refreshes the data in the constant buffer for
                     // the holographic camera indicated by cameraPose.
@@ -298,14 +386,12 @@ namespace FaceTag
                     // Attach the view/projection constant buffer for this camera to the graphics pipeline.
                     bool cameraActive = cameraResources.AttachViewProjectionBuffer(deviceResources);
 
-#if DRAW_SAMPLE_CONTENT
                     // Only render world-locked content when positional tracking is active.
                     if (cameraActive)
                     {
-                        // Draw the sample hologram.
-                        spinningCubeRenderer.Render();
-                    }
-#endif
+                        quadRenderer.RenderRGB(textRenderer.Texture);
+                    }                    
+
                     atLeastOneCameraRendered = true;
                 }
 
@@ -338,12 +424,9 @@ namespace FaceTag
         /// Notifies renderers that device resources need to be released.
         /// </summary>
         public void OnDeviceLost(Object sender, EventArgs e)
-        {
-
-#if DRAW_SAMPLE_CONTENT
-            spinningCubeRenderer.ReleaseDeviceDependentResources();
-#endif
-
+        {     
+            textRenderer.ReleaseDeviceDependentResources();        
+            quadRenderer.ReleaseDeviceDependentResources(); 
         }
 
         /// <summary>
@@ -351,9 +434,8 @@ namespace FaceTag
         /// </summary>
         public void OnDeviceRestored(Object sender, EventArgs e)
         {
-#if DRAW_SAMPLE_CONTENT
-            spinningCubeRenderer.CreateDeviceDependentResourcesAsync();
-#endif
+            textRenderer.CreateDeviceDependentResources();
+            quadRenderer.CreateDeviceDependentResourcesAsync(); 
         }
 
         void OnLocatabilityChanged(SpatialLocator sender, Object args)

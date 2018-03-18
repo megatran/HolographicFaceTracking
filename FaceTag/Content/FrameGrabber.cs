@@ -66,7 +66,7 @@ namespace FaceTag.Content
             }
         }
 
-        private FrameGrabber(MediaCapture mediaCapture = null, MediaFrameSource mediaFrameSource = null, MediaFrameReader mediaFrameReader - null)
+        private FrameGrabber(MediaCapture mediaCapture = null, MediaFrameSource mediaFrameSource = null, MediaFrameReader mediaFrameReader = null)
         {
 
             this.mediaCapture = mediaCapture; // capture audio, video , and image from camera

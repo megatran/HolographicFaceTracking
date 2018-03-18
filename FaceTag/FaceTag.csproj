@@ -4,7 +4,7 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">x86</Platform>
-    <ProjectGuid>{C05638AE-C8FA-4D62-8FAA-FC23000A937F}</ProjectGuid>
+    <ProjectGuid>{E732844C-05AD-4C74-AF50-369085E1AA1E}</ProjectGuid>
     <OutputType>AppContainerExe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>FaceTag</RootNamespace>
@@ -42,10 +42,22 @@
     <UseDotNetNativeToolchain>true</UseDotNetNativeToolchain>
   </PropertyGroup>
   <ItemGroup>
+    <!-- A reference to the entire .Net Framework and Windows SDK are automatically included -->
+    <Content Include="cognitive_service.key">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <None Include="README.MD" />
+    <Content Include="group.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Content\FrameGrabber.cs" />
     <Compile Include="Content\FrameAnalyzer.cs" />
     <Compile Include="Content\QuadRenderer.cs" />
     <Compile Include="Content\TextRenderer.cs" />
     <Compile Include="Content\Utils.cs" />
+    <Compile Include="Content\WesteuropeFaceServiceClient.cs" />
     <Compile Include="FaceTagMain.cs" />
     <Compile Include="AppView.cs" />
     <Compile Include="AppViewSource.cs" />
@@ -58,7 +70,6 @@
     <Compile Include="Common\StepTimer.cs" />
     <Compile Include="Content\ShaderStructures.cs" />
     <Compile Include="Content\SpatialInputHandler.cs" />
-    <Compile Include="Content\SpinningCubeRenderer.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
@@ -68,13 +79,10 @@
     <None Include="FaceTag_TemporaryKey.pfx" />
   </ItemGroup>
   <ItemGroup>
-    <GeometryShader Include="Content\Shaders\QuadGeometryShader.hlsl" />
-    <PixelShader Include="Content\Shaders\QuadPixelShaderRGB.hlsl" />
     <VertexShader Include="Content\Shaders\QuadVertexShader.hlsl" />
+    <PixelShader Include="Content\Shaders\QuadPixelShaderRGB.hlsl" />
+    <GeometryShader Include="Content\Shaders\QuadGeometryShader.hlsl" />
     <VertexShader Include="Content\Shaders\QuadVPRTVertexShader.hlsl" />
-    <Content Include="cognitive_service.key">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
     <Content Include="Properties\Default.rd.xml" />
   </ItemGroup>
   <ItemGroup>
@@ -85,12 +93,6 @@
     <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
     <Content Include="Assets\StoreLogo.png" />
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <GeometryShader Include="Content\Shaders\GeometryShader.hlsl" />
-    <PixelShader Include="Content\Shaders\PixelShader.hlsl" />
-    <VertexShader Include="Content\Shaders\VertexShader.hlsl" />
-    <VertexShader Include="Content\Shaders\VPRTVertexShader.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NETCore.UniversalWindowsPlatform">

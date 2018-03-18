@@ -9,3 +9,6 @@ My goals for this project:
 1. Get familiarized with interfacing the hardware and developing HoloLens app.
 2. Manipulate camera stream and position the dynamic label in the scene.
 3. Microsoft Azure's Face Cognitive service.
+
+## References
+https://www.nuget.org/packages/Microsoft.ProjectOxford.Face/  
